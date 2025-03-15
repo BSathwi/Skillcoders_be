@@ -190,13 +190,13 @@ authRouter.post("/approve-internship", verifyAdmin, async (req, res) => {
         const transporter = nodemailer.createTransport({
             service: "gmail",
             auth: {
-                user: "bojjasathwik1234@gmail.com",
+                user: "skillcoders.info@gmail.com",
                 pass: process.env.EMAIL_PASSWORD,
             },
         });
 
         const mailOptions = {
-            from: "bojjasathwik1234@gmail.com",
+            from: "skillcoders.info@gmail.com",
             to: applicant_email,
             subject: "Internship Selection Confirmation",
             html: `

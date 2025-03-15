@@ -8,7 +8,7 @@ const callbacksRouter = express.Router();
 const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-        user: "bojjasathwik1234@gmail.com",
+        user: "skillcoders.info@gmail.com",
         pass: process.env.EMAIL_PASSWORD,
     },
 });
@@ -65,7 +65,7 @@ callbacksRouter.patch("/callbacks/:id",verifyAdmin, async (req, res) => {
         await pool.query(`UPDATE request_callback SET status = 'Completed' WHERE id = ?`, [id]);
 
         const mailOptions = {
-            from: "bojjasathwik1234@gmail.com",
+            from: "skillcoders.info@gmail.com",
             to: callback.mail_id,
             subject: "Thank You for Connecting with Us!",
             html: `
