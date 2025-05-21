@@ -41,18 +41,18 @@ app.use("/support/", callbacksRouter);
 app.get("/", (req, res) => {
   res.send("Skillcoder Server is running...");
 });
-pool.getConnection()
-  .then((connection) => {
-    console.log("✅ Connected to MySQL Database!");
-    connection.release();
+
+// Test database connection
+pool.connect()
+  .then((client) => {
+    console.log("✅ Connected to PostgreSQL Database!");
+    client.release();
   })
   .catch((err) => {
     console.error("❌ Database connection failed:", err);
   });
 
-
-
-  const port = process.env.PORT || 5001;
-  app.listen(port,'0.0.0.0', () => {
-    console.log(`Server started on http://localhost:${port}`);
-  });
+const port = process.env.PORT || 5001;
+app.listen(port,'0.0.0.0', () => {
+  console.log(`Server started on http://localhost:${port}`);
+});

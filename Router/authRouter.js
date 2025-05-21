@@ -14,7 +14,11 @@ authRouter.post("/register", async (req, res) => {
     }
 
     try {
-        const [existingUser] = await pool.query("SELECT * FROM users WHERE mail_id = ?", [mail_id]);
+        const { rows: existingUser } = await pool.query(
+            "SELECT * FROM users WHERE mail_id = $1",
+            [mail_id]
+        );
+        
         if (existingUser.length > 0) {
             return res.status(400).json({ message: "Email already exists" });
         }
@@ -22,7 +26,7 @@ authRouter.post("/register", async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         await pool.query(
-            "INSERT INTO users (name, mail_id, password, phone_number, admin, active_status) VALUES (?, ?, ?, ?, ?, ?)", 
+            "INSERT INTO users (name, mail_id, password, phone_number, admin, active_status) VALUES ($1, $2, $3, $4, $5, $6)", 
             [name, mail_id, hashedPassword, phone_number, false, 'Inactive']
         );
 
@@ -33,7 +37,6 @@ authRouter.post("/register", async (req, res) => {
     }
 });
 
-
 authRouter.post("/login", async (req, res) => {
     const { mail_id, password } = req.body;
 
@@ -42,33 +45,39 @@ authRouter.post("/login", async (req, res) => {
     }
 
     try {
-        const [user] = await pool.query("SELECT * FROM users WHERE mail_id = ?", [mail_id]);
+        const { rows: users } = await pool.query(
+            "SELECT * FROM users WHERE mail_id = $1",
+            [mail_id]
+        );
 
-        if (user.length === 0) {
+        if (users.length === 0) {
             return res.status(401).json({ message: "Invalid credentials" });
         }
 
-        const foundUser = user[0];
+        const foundUser = users[0];
 
         const isMatch = await bcrypt.compare(password, foundUser.password);
         if (!isMatch) {
             return res.status(401).json({ message: "Invalid credentials" });
         }
 
-        await pool.query("UPDATE users SET active_at = NOW(), active_status = 'Active' WHERE id = ?", [foundUser.id]);
+        await pool.query(
+            "UPDATE users SET active_at = NOW(), active_status = 'Active' WHERE id = $1",
+            [foundUser.id]
+        );
 
         const token = jwt.sign(
             {
                 id: foundUser.id,
                 name: foundUser.name,
                 mail_id: foundUser.mail_id,
-                admin: foundUser.admin, 
+                admin: foundUser.admin
             },
             process.env.JWT_SECRET,
             { expiresIn: "7d" }
         );
 
-        res.json({ message: "Login successful", token, username: foundUser.name,admin: foundUser.admin });
+        res.json({ message: "Login successful", token, username: foundUser.name, admin: foundUser.admin });
     } catch (error) {
         console.error("Error:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -78,7 +87,10 @@ authRouter.post("/login", async (req, res) => {
 authRouter.post("/logout", verifyToken || verifyAdmin, async (req, res) => {
     try {
         const userId = req.user.id;
-        await pool.query("UPDATE users SET active_status = 'Inactive' WHERE id = ?", [userId]);
+        await pool.query(
+            "UPDATE users SET active_status = 'Inactive' WHERE id = $1",
+            [userId]
+        );
         res.json({ message: "Logout successful" });
     } catch (error) {
         console.error("Logout Error:", error);
@@ -89,44 +101,52 @@ authRouter.post("/logout", verifyToken || verifyAdmin, async (req, res) => {
 authRouter.get("/profile", verifyToken || verifyAdmin, async (req, res) => {
     try {
         const userId = req.user.id;
-        const connection = await pool.getConnection();
-
-        const [user] = await connection.query(
+        
+        const { rows: users } = await pool.query(
             `SELECT u.id, u.name, u.mail_id, u.phone_number, u.user_image, u.active_status,
-                    COALESCE(SUM(ci.course_id IS NOT NULL), 0) AS total_cart_count
+                    COALESCE(COUNT(ci.course_id), 0) AS total_cart_count
              FROM users u
              LEFT JOIN cart c ON u.id = c.user_id
              LEFT JOIN cart_items ci ON c.id = ci.cart_id
-             WHERE u.id = ?
+             WHERE u.id = $1
              GROUP BY u.id`,
             [userId]
         );
 
-        connection.release();
-
-        if (user.length === 0) {
+        if (users.length === 0) {
             return res.status(404).json({ message: "User not found!" });
         }
 
-        res.json(user[0]);
+        res.json(users[0]);
     } catch (err) {
         console.error("Error fetching profile:", err);
         res.status(500).json({ message: "Server Error" });
     }
 });
 
-authRouter.get("/dashboard",verifyAdmin, async (req, res) => {
+authRouter.get("/dashboard", verifyAdmin, async (req, res) => {
     try {
-        const [[{ total_courses }]] = await pool.query("SELECT COUNT(*) AS total_courses FROM courses");
-        const [[{ total_registrations }]] = await pool.query("SELECT COUNT(*) AS total_registrations FROM registered_courses");
-        const [[{ active_users }]] = await pool.query("SELECT COUNT(*) AS active_users FROM users WHERE active_status = 'Active'");
-        const [[{ total_revenue }]] = await pool.query("SELECT SUM(amount) AS total_revenue FROM payments WHERE status = 'success'");
+        const { rows: [{ total_courses }] } = await pool.query(
+            "SELECT COUNT(*) AS total_courses FROM courses"
+        );
+        
+        const { rows: [{ total_registrations }] } = await pool.query(
+            "SELECT COUNT(*) AS total_registrations FROM registered_courses"
+        );
+        
+        const { rows: [{ active_users }] } = await pool.query(
+            "SELECT COUNT(*) AS active_users FROM users WHERE active_status = 'Active'"
+        );
+        
+        const { rows: [{ total_revenue }] } = await pool.query(
+            "SELECT COALESCE(SUM(amount), 0) AS total_revenue FROM payments WHERE status = 'success'"
+        );
 
         res.json({
             total_courses,
             total_registrations,
             active_users,
-            total_revenue: total_revenue || 0
+            total_revenue
         });
     } catch (error) {
         console.error("Error fetching dashboard stats:", error);
@@ -134,9 +154,11 @@ authRouter.get("/dashboard",verifyAdmin, async (req, res) => {
     }
 });
 
-authRouter.get("/monthly-revenue",verifyAdmin, async (req, res) => {
+authRouter.get("/monthly-revenue", verifyAdmin, async (req, res) => {
     try {
-        const [revenueData] = await pool.query("SELECT MONTHNAME(created_at) AS month, SUM(amount) AS revenue FROM payments WHERE status = 'success' GROUP BY month ORDER BY MONTH(created_at)");
+        const { rows: revenueData } = await pool.query(
+            "SELECT to_char(created_at, 'Month') AS month, SUM(amount) AS revenue FROM payments WHERE status = 'success' GROUP BY month, date_part('month', created_at) ORDER BY date_part('month', created_at)"
+        );
         res.json(revenueData);
     } catch (error) {
         console.error("Error fetching monthly revenue:", error);
@@ -144,9 +166,11 @@ authRouter.get("/monthly-revenue",verifyAdmin, async (req, res) => {
     }
 });
 
-authRouter.get("/courses-by-category",verifyAdmin, async (req, res) => {
+authRouter.get("/courses-by-category", verifyAdmin, async (req, res) => {
     try {
-        const [categoryData] = await pool.query("SELECT category, COUNT(*) AS course_count FROM courses GROUP BY category");
+        const { rows: categoryData } = await pool.query(
+            "SELECT category, COUNT(*) AS course_count FROM courses GROUP BY category"
+        );
         res.json(categoryData);
     } catch (error) {
         console.error("Error fetching courses by category:", error);
@@ -154,10 +178,11 @@ authRouter.get("/courses-by-category",verifyAdmin, async (req, res) => {
     }
 });
 
-
-authRouter.get("/user-status",verifyAdmin, async (req, res) => {
+authRouter.get("/user-status", verifyAdmin, async (req, res) => {
     try {
-        const [users] = await pool.query("SELECT name, mail_id, phone_number, active_status, created_at, active_at FROM users");
+        const { rows: users } = await pool.query(
+            "SELECT name, mail_id, phone_number, active_status, created_at, active_at FROM users"
+        );
         res.json(users);
     } catch (error) {
         console.error("Error fetching user status:", error);
@@ -221,26 +246,23 @@ authRouter.post("/approve-internship", verifyAdmin, async (req, res) => {
     }
 });
 
-
-
-
-
 authRouter.get("/user/me", verifyAdmin, async (req, res) => {
     try {
-      const userId = req.user.id;
-  
-      const [rows] = await pool.query("SELECT admin FROM users WHERE id = ?", [userId]);
-  
-      if (rows.length === 0) {
-        return res.status(404).json({ error: "User not found" });
-      }
-  
-      res.json({ admin: rows[0].admin });
+        const userId = req.user.id;
+        const { rows } = await pool.query(
+            "SELECT admin FROM users WHERE id = $1",
+            [userId]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({ admin: rows[0].admin });
     } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ error: "Internal server error" });
+        console.error("Error fetching user:", error);
+        res.status(500).json({ error: "Internal server error" });
     }
-  });
-  
+});
 
 module.exports = authRouter;

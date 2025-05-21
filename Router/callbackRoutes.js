@@ -13,9 +13,9 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-callbacksRouter.get("/get/callbacks",verifyAdmin, async (req, res) => {
+callbacksRouter.get("/get/callbacks", verifyAdmin, async (req, res) => {
     try {
-        const [callbacks] = await pool.query("SELECT * FROM request_callback ORDER BY created_at DESC");
+        const { rows: callbacks } = await pool.query("SELECT * FROM request_callback ORDER BY created_at DESC");
         res.json({ message: "Callbacks retrieved successfully", data: callbacks });
     } catch (error) {
         console.error("Error fetching callbacks:", error);
@@ -27,51 +27,54 @@ callbacksRouter.post("/callbacks", async (req, res) => {
     const { firstName, lastName, phoneNumber, mailId, comment } = req.body;
 
     try {
-        const [result] = await pool.query(
-            `INSERT INTO request_callback (first_name, last_name, phone_number, mail_id, comment, status) 
-             VALUES (?, ?, ?, ?, ?, 'Pending')`,
-            [firstName, lastName, phoneNumber, mailId, comment]
+        const { rows: [result] } = await pool.query(
+            `INSERT INTO request_callback (name, email, phone_number, message, status) 
+             VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
+            [firstName + ' ' + lastName, mailId, phoneNumber, comment]
         );
 
-        res.json({ message: "Callback request added successfully", id: result.insertId });
+        res.json({ message: "Callback request added successfully", id: result.id });
     } catch (error) {
         console.error("Error adding callback request:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 });
 
-
-callbacksRouter.patch("/callbacks/:id",verifyAdmin, async (req, res) => {
+callbacksRouter.patch("/callbacks/:id", verifyAdmin, async (req, res) => {
     const { id } = req.params;
 
     try {
-        const [existingCallback] = await pool.query(
-            `SELECT first_name, last_name, phone_number, mail_id, status 
-             FROM request_callback WHERE id = ?`,
+        const { rows: existingCallback } = await pool.query(
+            `SELECT name, email, phone_number, status 
+             FROM request_callback WHERE id = $1`,
             [id]
         );
 
-        
+        if (existingCallback.length === 0) {
+            return res.status(404).json({ message: "Callback request not found" });
+        }
 
         const callback = existingCallback[0];
 
         if (callback.status === "Completed") {
             return res.status(400).json({
-                message: "You have already connected with this user.",
-                
+                message: "You have already connected with this user."
             });
         }
 
-        await pool.query(`UPDATE request_callback SET status = 'Completed' WHERE id = ?`, [id]);
+        await pool.query(
+            `UPDATE request_callback SET status = 'Completed' WHERE id = $1`, 
+            [id]
+        );
 
         const mailOptions = {
             from: "skillcoders.info@gmail.com",
-            to: callback.mail_id,
+            to: callback.email,
             subject: "Thank You for Connecting with Us!",
             html: `
                 <div style="text-align: center; font-family: Arial, sans-serif; color: #333;">
                     <img src="https://res.cloudinary.com/danm2mfq5/image/upload/v1741872237/oldtkme4197big9bv2qh.png" alt="Skillcoders Logo" style="width: 150px; margin-bottom: 20px;" />
-                    <h2 style="color: #4A90E2;">Thank You, ${callback.first_name}!</h2>
+                    <h2 style="color: #4A90E2;">Thank You, ${callback.name}!</h2>
                     <p style="font-size: 16px; line-height: 1.5;">
                         We sincerely appreciate you taking the time to reach out to us. Our support team at 
                         <strong>Skillcoders</strong> has successfully connected with you regarding your request, 
@@ -80,7 +83,7 @@ callbacksRouter.patch("/callbacks/:id",verifyAdmin, async (req, res) => {
                     <p style="font-size: 16px; line-height: 1.5;">
                         At <strong>Skillcoders</strong>, we are committed to providing the best service possible. 
                         If you have any further questions, need additional assistance, or would like to explore more about our offerings, 
-                        please don’t hesitate to reach out again. We’re always happy to help!
+                        please don't hesitate to reach out again. We're always happy to help!
                     </p>
                     <p style="font-size: 16px; font-weight: bold;">
                         Thank you for trusting us, and we look forward to serving you again in the future.

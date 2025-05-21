@@ -15,8 +15,8 @@ razorpayRoute.post("/create-order", verifyToken, async (req, res) => {
             return res.status(400).json({ message: "Course ID and amount are required" });
         }
 
-        const [rows] = await db.query(
-            "SELECT * FROM registered_courses WHERE user_id = ? AND course_id = ?",
+        const { rows } = await db.query(
+            "SELECT * FROM registered_courses WHERE user_id = $1 AND course_id = $2",
             [user_id, course_id]
         );
 
@@ -64,36 +64,36 @@ razorpayRoute.post("/verify-payment", verifyToken, async (req, res) => {
           return res.status(400).json({ message: "Payment verification failed" });
       }
 
-      const connection = await db.getConnection();
+      const client = await db.connect();
       try {
-          await connection.beginTransaction();
+          await client.query('BEGIN');
 
           // Insert payment record
-          await connection.query(
-              "INSERT INTO payments (user_id, course_id, transaction_id, amount, status) VALUES (?, ?, ?, ?, ?)",
+          await client.query(
+              "INSERT INTO payments (user_id, course_id, transaction_id, amount, status) VALUES ($1, $2, $3, $4, $5)",
               [user_id, course_id, payment_id, amount, "success"]
           );
 
-          await connection.query(
-              "INSERT INTO registered_courses (user_id, course_id) VALUES (?, ?)",
+          await client.query(
+              "INSERT INTO registered_courses (user_id, course_id) VALUES ($1, $2)",
               [user_id, course_id]
           );
 
-          await connection.query(
-              "UPDATE courses SET no_of_users_registered = no_of_users_registered + 1 WHERE id = ?",
+          await client.query(
+              "UPDATE courses SET no_of_users_registered = no_of_users_registered + 1 WHERE id = $1",
               [course_id]
           );
 
-          await connection.commit();
-          connection.release();
+          await client.query('COMMIT');
+          client.release();
 
           res.json({
               success: true,
               message: "Payment verified and course registered successfully",
           });
       } catch (error) {
-          await connection.rollback();
-          connection.release();
+          await client.query('ROLLBACK');
+          client.release();
           throw error;
       }
   } catch (error) {
