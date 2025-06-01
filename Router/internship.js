@@ -7,6 +7,7 @@ const internshipRouter = express.Router();
 internshipRouter.post("/submit-internship", verifyToken, async (req, res) => {
     const { domain, name, phone_number, email, college, branch, year_of_passout } = req.body;
     const user_image = req.user.user_image;
+    console.log(domain, name, phone_number, email, college, branch, year_of_passout)
 
     if (!name || !phone_number || !email || !college || !branch || !year_of_passout || !domain) {
         return res.status(400).json({ message: "All fields are required" });

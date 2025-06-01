@@ -68,7 +68,7 @@ callbacksRouter.patch("/callbacks/:id", verifyAdmin, async (req, res) => {
         );
 
         const mailOptions = {
-            from: "skillcoders.info@gmail.com",
+            from: "bojjasathwik1234@gmail.com",
             to: callback.email,
             subject: "Thank You for Connecting with Us!",
             html: `

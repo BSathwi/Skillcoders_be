@@ -5,6 +5,7 @@ const pool = require("../DbConnection/db");
 const { verifyToken, verifyAdmin } = require("../middleware/authMiddle");
 const authRouter = express.Router();
 const nodemailer = require("nodemailer");
+require('dotenv').config()
 
 authRouter.post("/register", async (req, res) => {
     const { mail_id, name, password, phone_number } = req.body;  
@@ -192,6 +193,7 @@ authRouter.get("/user-status", verifyAdmin, async (req, res) => {
 
 authRouter.post("/approve-internship", verifyAdmin, async (req, res) => {
     const { applicant_email, applicant_name, id,status } = req.body;
+    console.log(applicant_email, applicant_name, id,status)
 
     if (status=="complete"){
         return res.status(400).json({ message: "Already student is selected" });
@@ -202,26 +204,25 @@ authRouter.post("/approve-internship", verifyAdmin, async (req, res) => {
     }
     try {
         
-        const [result] = await pool.query(
-            "UPDATE internship_form SET status = 'complete', status_updated_at = NOW() WHERE id = ? AND name = ?",
-            [id, applicant_name]
-        );
+       const result = await pool.query(
+    `UPDATE internship_form SET status = 'complete', status_updated_at = NOW() WHERE id = $1 AND "name" = $2`,
+    [id, applicant_name]
+);
 
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: "Applicant not found or already updated" });
-        }
+if (result.rowCount === 0) {
+    return res.status(404).json({ message: "Applicant not found or already updated" });
+}
 
         const transporter = nodemailer.createTransport({
             service: "gmail",
             auth: {
-                user: "skillcoders.info@gmail.com",
+                user: "bojjasathwik1234@gmail.com",
                 pass: process.env.EMAIL_PASSWORD,
             },
         });
 
         const mailOptions = {
-            from: "skillcoders.info@gmail.com",
+            from: "bojjasathwik1234@gmail.com",
             to: applicant_email,
             subject: "Internship Selection Confirmation",
             html: `
